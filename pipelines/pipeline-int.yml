@@ -1,0 +1,75 @@
+variables:
+  docker_builder: 'DockerCompute'
+  docker_dest_config_directory: '/tmp/docker_batch_testing/'
+  ecr_account_id: '1234567890' #Francium
+  docker_tag1: 'ecr-and-docker-tag-name'
+  batch_test_script: 'batch-int.sh'
+
+# Disable CI Triggers
+trigger: none
+
+# Release instructions
+stages:
+- stage: Docker_Build_And_Test
+  jobs:
+  - deployment: Docker_Build_And_Test
+    displayName: Building and Testing Docker
+    pool: $(docker_builder)
+    environment: Docker_Build
+    continueOnError: false
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - checkout: self
+
+            - task: Bash@3
+              displayName: Stage scripts
+              inputs:
+                targetType: inline
+                workingDirectory: $(System.DefaultWorkingDirectory)
+                failOnStderr: true
+                script: |
+                  mkdir -p $(docker_dest_config_directory)
+                  cp -f ./* $(docker_dest_config_directory)
+
+            - task: Bash@3
+              displayName: Build Docker Images
+              inputs:
+                targetType: inline
+                workingDirectory: $(docker_dest_config_directory)
+                failOnStderr: true
+                script: |
+                  docker build -f Dockerfile -t $(docker_tag1) .
+
+            - task: Bash@3
+              displayName: Copy Docker Image to ECR
+              inputs:
+                targetType: inline
+                workingDirectory: $(docker_dest_config_directory)
+                failOnStderr: true
+                script: |
+                  docker tag $(docker_tag1):latest $(ecr_account_id).dkr.ecr.us-east-1.amazonaws.com/$(docker_tag1):latest
+                  /usr/local/bin/aws ecr get-login-password | docker login --username AWS --password-stdin https://$(ecr_account_id).dkr.ecr.us-east-1.amazonaws.com 2>&1 
+                  docker push $(ecr_account_id).dkr.ecr.us-east-1.amazonaws.com/$(docker_tag1):latest
+
+            - task: Bash@3
+              displayName: Trigger Batch Testing Jobs
+              inputs:
+                targetType: inline
+                workingDirectory: $(System.DefaultWorkingDirectory)
+                failOnStderr: true
+                script: |
+                  chmod +x ./pipelines/batch_testing/$(batch_test_script)
+                  ./pipelines/batch_testing/$(batch_test_script)
+
+            - task: Bash@3
+              displayName: Cleanup files after run
+              inputs:
+                targetType: inline
+                workingDirectory: $(System.DefaultWorkingDirectory)
+                failOnStderr: false
+                condition: always() # this step will always run, even if the pipeline is canceled
+                script: |
+                  rm -rf $(docker_dest_config_directory)
+                  rm -rf $(System.DefaultWorkingDirectory)
