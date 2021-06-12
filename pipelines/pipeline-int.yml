@@ -1,7 +1,7 @@
 variables:
   docker_builder: 'DockerCompute'
   docker_dest_config_directory: '/tmp/docker_batch_testing/'
-  ecr_account_id: '1234567890' #Francium
+  ecr_account_id: '1234567890'
   docker_tag1: 'ecr-and-docker-tag-name'
   batch_test_script: 'batch-int.sh'
 
